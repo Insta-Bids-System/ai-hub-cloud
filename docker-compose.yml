@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # Open WebUI - Main AI Interface
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: instabids-open-webui
+    environment:
+      # Core Settings
+      - WEBUI_NAME=InstaBids AI Hub
+      - WEBUI_AUTH=true
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-instabids-cloud-2024}
+      - ENV=dev
+      - ENABLE_API_KEY=true
+      
+      # AI Providers
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      
+      # Database - Using Supabase
+      - DATABASE_URL=${SUPABASE_DATABASE_URL}
+      
+      # Redis for caching (local Redis, not the DO cluster for now)
+      - REDIS_URL=redis://redis:6379
+      
+      # Features
+      - ENABLE_RAG=true
+      - ENABLE_WEB_SEARCH=true
+      - ENABLE_IMAGE_GENERATION=true
+      
+      # GitHub Integration
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      
+    ports:
+      - "8080:8080"
+    volumes:
+      - open-webui-data:/app/backend/data
+      - ./company-docs:/app/backend/data/docs:ro
+      - ./project-prompts:/app/backend/data/prompts:ro
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - ai-hub-network
+
+  # MCP Server - Bridge for Claude Desktop
+  mcp-server:
+    build: ./mcp-server
+    container_name: instabids-mcp-server
+    environment:
+      # CRITICAL: Use Docker service name, not localhost!
+      - OPENWEBUI_URL=http://open-webui:8080
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY}
+      
+      # Redis for session management
+      - REDIS_URL=redis://redis:6379
+      
+      # mcpo proxy configuration
+      - MCPO_MODE=proxy
+      - MCPO_HOST=0.0.0.0
+      - MCPO_PORT=8888
+      
+      # OAuth settings (to be configured)
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
+      
+    ports:
+      - "8888:8888"
+    depends_on:
+      - open-webui
+      - redis
+    restart: unless-stopped
+    networks:
+      - ai-hub-network
+
+  # Redis - Local instance for caching and sessions
+  redis:
+    image: redis:7-alpine
+    container_name: instabids-redis-local
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - ai-hub-network
+
+  # Nginx - Reverse Proxy and SSL Termination
+  nginx:
+    image: nginx:alpine
+    container_name: instabids-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - open-webui
+      - mcp-server
+    restart: unless-stopped
+    networks:
+      - ai-hub-network
+
+networks:
+  ai-hub-network:
+    driver: bridge
+
+volumes:
+  open-webui-data:
+    driver: local
+  redis-data:
+    driver: local
