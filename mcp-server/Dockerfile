@@ -20,8 +20,8 @@ RUN pip install --no-cache-dir \
 COPY requirements.txt* ./
 RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
 
-# Copy the MCP server files
-COPY mcp_server.py .
+# Copy the COMPLETE MCP server files (200+ tools)
+COPY open_webui_mcp_complete.py mcp_server.py
 COPY auth_handler.py .
 
 # Create a healthcheck script
