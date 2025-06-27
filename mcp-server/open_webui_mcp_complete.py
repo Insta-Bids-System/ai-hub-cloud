@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Complete Open WebUI MCP Server - All 200+ API Endpoints
-Cloud-ready version with Redis session management
+InstaBids AI Hub - HTTP MCP Server
+Simple HTTP server exposing MCP functionality for cloud deployment
 """
 
 import asyncio
@@ -9,29 +9,30 @@ import aiohttp
 import json
 import os
 import redis
+from aiohttp import web
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from mcp.server import Server
-from mcp.types import Tool, TextContent, CallToolRequest, CallToolResult
-import mcp.server.stdio
-from auth_handler import AuthHandler
 
 # Configuration
 API_KEY = os.getenv("OPENWEBUI_API_KEY", "sk-317cb964a8a7473f9479d54fe946ea0f")
-BASE_URL = os.getenv("OPENWEBUI_URL", "http://open-webui:8080")  # Internal Docker network
+BASE_URL = os.getenv("OPENWEBUI_URL", "http://open-webui:8080")
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
+PORT = int(os.getenv("MCPO_PORT", "8888"))
 
 # Initialize components
-server = Server("openwebui-complete")
-session = None
 redis_client = None
-auth_handler = AuthHandler()
+session = None
 
 def get_redis_client():
     """Get Redis client with connection pooling"""
     global redis_client
     if redis_client is None:
-        redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+        try:
+            redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+            redis_client.ping()  # Test connection
+        except Exception as e:
+            print(f"⚠️  Redis connection failed: {e}")
+            redis_client = None
     return redis_client
 
 async def get_session():
@@ -60,122 +61,129 @@ async def api_request(method: str, endpoint: str, data: Optional[Dict] = None) -
     except Exception as e:
         return {"status": 500, "data": {"error": str(e)}, "success": False}
 
-# Tool list function returning all 200+ tools
-@server.list_tools()
-async def handle_list_tools() -> List[Tool]:
-    """All 200+ Open WebUI tools organized by category"""
-    tools = []
-    
-    # Workspace Creation Tools
-    tools.extend([
-        Tool(name="create_workspace", description="Create complete AI workspace with model and prompt", inputSchema={"type": "object", "properties": {"name": {"type": "string"}, "model": {"type": "string"}, "system_prompt": {"type": "string"}}, "required": ["name", "model", "system_prompt"]}),
-        Tool(name="create_instabids_mobile_workspace", description="Create InstaBids mobile development workspace", inputSchema={"type": "object", "properties": {}}),
-        Tool(name="create_instabridge_api_workspace", description="Create InstaBridge API development workspace", inputSchema={"type": "object", "properties": {}}),
-        Tool(name="create_general_dev_workspace", description="Create general development workspace", inputSchema={"type": "object", "properties": {"project_name": {"type": "string"}}, "required": ["project_name"]}),
-        Tool(name="setup_complete_system", description="Setup complete InstaBids AI system with all workspaces", inputSchema={"type": "object", "properties": {}}),
-        Tool(name="workspace_list", description="List all created workspaces", inputSchema={"type": "object", "properties": {}}),
-    ])
-    
-    # Authentication & User Tools
-    tools.extend([
-        Tool(name="auth_get_current_user", description="Get current user information", inputSchema={"type": "object", "properties": {}}),
-        Tool(name="auth_signin", description="Sign in user", inputSchema={"type": "object", "properties": {"email": {"type": "string"}, "password": {"type": "string"}}, "required": ["email", "password"]}),
-        Tool(name="auth_signup", description="Register new user", inputSchema={"type": "object", "properties": {"name": {"type": "string"}, "email": {"type": "string"}, "password": {"type": "string"}}, "required": ["name", "email", "password"]}),
-        Tool(name="users_list", description="List all users", inputSchema={"type": "object", "properties": {"limit": {"type": "integer"}}}),
-    ])
-    
-    # Model Tools
-    tools.extend([
-        Tool(name="models_list", description="List all available models", inputSchema={"type": "object", "properties": {}}),
-        Tool(name="models_download", description="Download model", inputSchema={"type": "object", "properties": {"model": {"type": "string"}}, "required": ["model"]}),
-    ])
-    
-    # Chat Tools
-    tools.extend([
-        Tool(name="chat_completions", description="Main chat completion endpoint", inputSchema={"type": "object", "properties": {"model": {"type": "string"}, "messages": {"type": "array"}}, "required": ["model", "messages"]}),
-        Tool(name="chats_list", description="List user chats", inputSchema={"type": "object", "properties": {"limit": {"type": "integer"}}}),
-        Tool(name="chats_create", description="Create new chat", inputSchema={"type": "object", "properties": {"chat": {"type": "object"}}, "required": ["chat"]}),
-        Tool(name="chats_get", description="Get chat by ID", inputSchema={"type": "object", "properties": {"chat_id": {"type": "string"}}, "required": ["chat_id"]}),
-        Tool(name="chats_delete", description="Delete chat", inputSchema={"type": "object", "properties": {"chat_id": {"type": "string"}}, "required": ["chat_id"]}),
-    ])
-    
-    # File Tools
-    tools.extend([
-        Tool(name="files_upload", description="Upload file", inputSchema={"type": "object", "properties": {"content": {"type": "string"}, "filename": {"type": "string"}}, "required": ["content", "filename"]}),
-        Tool(name="files_list", description="List all files", inputSchema={"type": "object", "properties": {}}),
-    ])
-    
-    # Knowledge/RAG Tools
-    tools.extend([
-        Tool(name="knowledge_list", description="List knowledge collections", inputSchema={"type": "object", "properties": {}}),
-        Tool(name="knowledge_create", description="Create knowledge collection", inputSchema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}),
-        Tool(name="rag_process_text", description="Process text for RAG", inputSchema={"type": "object", "properties": {"name": {"type": "string"}, "content": {"type": "string"}}, "required": ["name", "content"]}),
-    ])
-    
-    # Configuration Tools
-    tools.extend([
-        Tool(name="config_export", description="Export configuration", inputSchema={"type": "object", "properties": {}}),
-        Tool(name="config_models_get", description="Get model configuration", inputSchema={"type": "object", "properties": {}}),
-    ])
-    
-    return tools
-
-# Main tool handler
-@server.call_tool()
-async def handle_call_tool(request: CallToolRequest) -> CallToolResult:
-    """Handle all tool calls with Redis session management"""
-    tool_name = request.params.name
-    args = request.params.arguments or {}
-    
-    # Log tool usage to Redis
+# HTTP Handlers
+async def health_check(request):
+    """Health check endpoint for DigitalOcean"""
     redis = get_redis_client()
-    redis.hincrby("ai-hub:tool_usage", tool_name, 1)
+    redis_status = "connected" if redis else "disconnected"
     
-    # Route to appropriate handler
-    if tool_name.startswith("create_") or tool_name.startswith("workspace_") or tool_name.startswith("setup_"):
-        return await handle_compound_tools(tool_name, args)
-    elif tool_name == "chat_completions":
-        result = await api_request("POST", "/api/chat/completions", args)
-    elif tool_name == "chats_list":
-        result = await api_request("GET", "/api/v1/chats/list", params=args)
-    elif tool_name == "chats_create":
-        result = await api_request("POST", "/api/v1/chats/new", args)
-    elif tool_name == "models_list":
-        result = await api_request("GET", "/api/models")
-    elif tool_name == "auth_get_current_user":
-        result = await api_request("GET", "/api/v1/auths/")
-    elif tool_name == "files_list":
-        result = await api_request("GET", "/api/v1/files/")
-    elif tool_name == "knowledge_list":
-        result = await api_request("GET", "/api/v1/knowledge/")
-    elif tool_name == "rag_process_text":
-        result = await api_request("POST", "/api/v1/retrieval/process/text", args)
-    elif tool_name == "config_export":
-        result = await api_request("GET", "/api/v1/configs/export")
-    else:
-        result = {"error": f"Tool not implemented: {tool_name}"}
+    return web.json_response({
+        "status": "healthy",
+        "service": "InstaBids AI Hub",
+        "version": "1.0.0",
+        "timestamp": datetime.now().isoformat(),
+        "redis": redis_status,
+        "port": PORT
+    })
+
+async def mcp_tools(request):
+    """Return available MCP tools"""
+    tools = [
+        {
+            "name": "create_workspace",
+            "description": "Create complete AI workspace with model and prompt",
+            "inputSchema": {
+                "type": "object", 
+                "properties": {
+                    "name": {"type": "string"}, 
+                    "model": {"type": "string"}, 
+                    "system_prompt": {"type": "string"}
+                }, 
+                "required": ["name", "model", "system_prompt"]
+            }
+        },
+        {
+            "name": "create_instabids_mobile_workspace",
+            "description": "Create InstaBids mobile development workspace",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "create_instabridge_api_workspace", 
+            "description": "Create InstaBridge API development workspace",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "create_general_dev_workspace",
+            "description": "Create general development workspace", 
+            "inputSchema": {
+                "type": "object", 
+                "properties": {"project_name": {"type": "string"}}, 
+                "required": ["project_name"]
+            }
+        },
+        {
+            "name": "workspace_list",
+            "description": "List all created workspaces",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "chat_completions",
+            "description": "Main chat completion endpoint", 
+            "inputSchema": {
+                "type": "object", 
+                "properties": {
+                    "model": {"type": "string"}, 
+                    "messages": {"type": "array"}
+                }, 
+                "required": ["model", "messages"]
+            }
+        },
+        {
+            "name": "chats_list",
+            "description": "List user chats",
+            "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer"}}}
+        },
+        {
+            "name": "models_list",
+            "description": "List all available models",
+            "inputSchema": {"type": "object", "properties": {}}
+        }
+    ]
     
-    return CallToolResult(content=[TextContent(type="text", text=json.dumps(result, indent=2))])
+    return web.json_response({"tools": tools, "count": len(tools)})
 
-# Compound tool handlers
-async def handle_compound_tools(tool_name: str, args: Dict) -> CallToolResult:
-    """Handle compound operations"""
-    if tool_name == "create_workspace":
-        return await create_complete_workspace(args)
-    elif tool_name == "create_instabids_mobile_workspace":
-        return await create_instabids_mobile_workspace()
-    elif tool_name == "create_instabridge_api_workspace":
-        return await create_instabridge_api_workspace()
-    elif tool_name == "create_general_dev_workspace":
-        return await create_general_dev_workspace(args.get("project_name", "New Project"))
-    elif tool_name == "workspace_list":
-        return await list_all_workspaces()
-    elif tool_name == "setup_complete_system":
-        return await setup_complete_instabids_system()
-    else:
-        return CallToolResult(content=[TextContent(type="text", text=f"Unknown compound tool: {tool_name}")])
+async def mcp_call_tool(request):
+    """Handle tool calls"""
+    try:
+        data = await request.json()
+        tool_name = data.get("name")
+        args = data.get("arguments", {})
+        
+        # Log tool usage to Redis
+        redis = get_redis_client()
+        if redis:
+            try:
+                redis.hincrby("ai-hub:tool_usage", tool_name, 1)
+            except:
+                pass  # Non-critical
+        
+        # Handle different tools
+        if tool_name == "create_workspace":
+            result = await create_complete_workspace(args)
+        elif tool_name == "create_instabids_mobile_workspace":
+            result = await create_instabids_mobile_workspace()
+        elif tool_name == "create_instabridge_api_workspace":
+            result = await create_instabridge_api_workspace()
+        elif tool_name == "create_general_dev_workspace":
+            result = await create_general_dev_workspace(args.get("project_name", "New Project"))
+        elif tool_name == "workspace_list":
+            result = await list_all_workspaces()
+        elif tool_name == "chat_completions":
+            result = await api_request("POST", "/api/chat/completions", args)
+        elif tool_name == "chats_list":
+            result = await api_request("GET", "/api/v1/chats/list")
+        elif tool_name == "models_list":
+            result = await api_request("GET", "/api/models")
+        else:
+            result = {"error": f"Tool not implemented: {tool_name}"}
+        
+        return web.json_response({"result": result})
+        
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=400)
 
-async def create_complete_workspace(args: Dict) -> CallToolResult:
+# Workspace creation functions
+async def create_complete_workspace(args: Dict) -> Dict:
     """Create a complete AI workspace"""
     name = args.get("name", "New Workspace")
     model = args.get("model", "gpt-4")
@@ -192,12 +200,12 @@ async def create_complete_workspace(args: Dict) -> CallToolResult:
     
     result = await api_request("POST", "/api/v1/chats/new", chat_data)
     
-    if result["success"]:
-        return CallToolResult(content=[TextContent(type="text", text=f"✅ Workspace '{name}' created successfully!")])
+    if result.get("success"):
+        return {"message": f"✅ Workspace '{name}' created successfully!", "success": True}
     else:
-        return CallToolResult(content=[TextContent(type="text", text=f"❌ Failed to create workspace")])
+        return {"message": "❌ Failed to create workspace", "success": False}
 
-async def create_instabids_mobile_workspace() -> CallToolResult:
+async def create_instabids_mobile_workspace() -> Dict:
     """Create InstaBids mobile development workspace"""
     system_prompt = """You are an expert React Native developer for InstaBids mobile app.
 Tech: React Native, Expo, TypeScript, NativeWind, Zustand
@@ -209,7 +217,7 @@ Colors: #1E40AF (primary), #F59E0B (secondary)"""
         "system_prompt": system_prompt
     })
 
-async def create_instabridge_api_workspace() -> CallToolResult:
+async def create_instabridge_api_workspace() -> Dict:
     """Create InstaBridge API development workspace"""
     system_prompt = """You are a backend API expert for InstaBridge platform.
 Tech: Node.js, TypeScript, Express, PostgreSQL
@@ -221,7 +229,7 @@ Focus: API design, security, integrations"""
         "system_prompt": system_prompt
     })
 
-async def create_general_dev_workspace(project_name: str) -> CallToolResult:
+async def create_general_dev_workspace(project_name: str) -> Dict:
     """Create general development workspace"""
     system_prompt = f"""You are a full-stack developer for {project_name}.
 Follow InstaBids standards and patterns."""
@@ -232,40 +240,27 @@ Follow InstaBids standards and patterns."""
         "system_prompt": system_prompt
     })
 
-async def list_all_workspaces() -> CallToolResult:
+async def list_all_workspaces() -> Dict:
     """List all created workspaces"""
     result = await api_request("GET", "/api/v1/chats/list")
     
-    if result["success"]:
-        chats = result["data"]
+    if result.get("success"):
+        chats = result.get("data", [])
         workspaces = [chat for chat in chats if "workspace" in chat.get("tags", [])]
         
-        workspace_list = "\n".join([
-            f"🔹 {chat['title']} (ID: {chat['id'][:8]}...)"
+        workspace_list = [
+            {"id": chat.get("id", "")[:8] + "...", "title": chat.get("title", "")}
             for chat in workspaces
-        ])
+        ]
         
-        return CallToolResult(content=[TextContent(type="text", text=f"📋 Workspaces ({len(workspaces)} total):\n\n{workspace_list}")])
+        return {
+            "message": f"📋 Found {len(workspaces)} workspaces",
+            "workspaces": workspace_list,
+            "success": True
+        }
     else:
-        return CallToolResult(content=[TextContent(type="text", text="❌ Failed to list workspaces")])
+        return {"message": "❌ Failed to list workspaces", "success": False}
 
-async def setup_complete_instabids_system() -> CallToolResult:
-    """Setup complete InstaBids AI system"""
-    results = []
-    
-    # Create workspaces
-    mobile = await create_instabids_mobile_workspace()
-    results.append("✅ Mobile workspace")
-    
-    api = await create_instabridge_api_workspace()
-    results.append("✅ API workspace")
-    
-    general = await create_general_dev_workspace("InstaBids Core")
-    results.append("✅ General workspace")
-    
-    return CallToolResult(content=[TextContent(type="text", text=f"🚀 System Setup Complete!\n\n" + "\n".join(results))])
-
-# Server lifecycle
 async def cleanup():
     """Cleanup on shutdown"""
     global session, redis_client
@@ -275,46 +270,54 @@ async def cleanup():
         redis_client.close()
 
 async def main():
-    """Run the MCP server with container support"""
+    """Run the HTTP MCP server"""
+    app = web.Application()
+    
+    # Routes
+    app.router.add_get('/', health_check)
+    app.router.add_get('/health', health_check)
+    app.router.add_get('/mcp/tools', mcp_tools)
+    app.router.add_post('/mcp/call', mcp_call_tool)
+    
+    # Set Redis status
     redis = get_redis_client()
-    redis.set("ai-hub:mcp_server:status", "running")
+    if redis:
+        try:
+            redis.set("ai-hub:mcp_server:status", "running")
+            redis.set("ai-hub:mcp_server:start_time", datetime.now().isoformat())
+        except:
+            pass
     
-    # Check if running in container/proxy mode
-    is_container = os.getenv("MCPO_MODE") == "proxy"
+    print(f"🚀 Starting InstaBids AI Hub on port {PORT}")
+    print(f"🔗 Health Check: http://localhost:{PORT}/health")
+    print(f"🛠️  MCP Tools: http://localhost:{PORT}/mcp/tools")
+    print(f"⚡ MCP Call: http://localhost:{PORT}/mcp/call")
     
-    if is_container:
-        # Running in Docker with mcpo proxy - keep server alive
-        print("🐳 Starting MCP server in container mode...")
-        
-        async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-            try:
-                # Run server in background task
-                server_task = asyncio.create_task(server.run(read_stream, write_stream))
-                
-                # Keep container alive with heartbeat
-                while True:
-                    await asyncio.sleep(10)
+    # Start server
+    runner = web.AppRunner(app)
+    await runner.setup()
+    
+    site = web.TCPSite(runner, '0.0.0.0', PORT)
+    await site.start()
+    
+    print(f"✅ Server running on http://0.0.0.0:{PORT}")
+    
+    # Keep server running with heartbeat
+    try:
+        while True:
+            await asyncio.sleep(30)
+            if redis:
+                try:
                     redis.set("ai-hub:mcp_server:heartbeat", datetime.now().isoformat())
-                    
-            except asyncio.CancelledError:
-                print("🛑 Server shutting down...")
-                server_task.cancel()
-                await cleanup()
-                raise
-            except Exception as e:
-                print(f"❌ Server error: {e}")
-                await cleanup()
-                raise
-            finally:
-                await cleanup()
-    else:
-        # Running directly with stdio (Claude Desktop)
-        print("💻 Starting MCP server in stdio mode...")
-        async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-            try:
-                await server.run(read_stream, write_stream)
-            finally:
-                await cleanup()
+                except:
+                    pass
+            print(f"💓 Heartbeat: {datetime.now().strftime('%H:%M:%S')}")
+            
+    except KeyboardInterrupt:
+        print("🛑 Shutting down...")
+    finally:
+        await cleanup()
+        await runner.cleanup()
 
 if __name__ == "__main__":
     asyncio.run(main())
