@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 InstaBids AI Hub - HTTP MCP Server
-FIXED: Valkey 8.0.3 URL Query Parameter Solution (Context7 Research)
+FIXED: Valkey 8.0.3 URL Query Parameter Solution (Context7 Research) + Frontend UI
 """
 
 import asyncio
@@ -44,7 +44,7 @@ def get_redis_client():
         # Parse URL for debugging
         try:
             parsed = urlparse(base_redis_url)
-            logger.info(f"📊 Parsed URL - Host: {parsed.hostname}, Port: {parsed.port}, SSL: {parsed.scheme == 'rediss'}")
+            logger.info(f"📋 Parsed URL - Host: {parsed.hostname}, Port: {parsed.port}, SSL: {parsed.scheme == 'rediss'}")
         except Exception as e:
             logger.error(f"❌ URL parsing failed: {e}")
         
@@ -65,7 +65,7 @@ def get_redis_client():
             redis_client.set(test_key, "valkey-url-params-working", ex=60)
             test_result = redis_client.get(test_key)
             logger.info(f"✅ Valkey operation test: {test_result}")
-        
+    
             return redis_client
             
         except Exception as e:
@@ -142,7 +142,7 @@ def get_redis_client():
         
         # All strategies failed
         logger.error("🚨 ALL VALKEY CONNECTION STRATEGIES FAILED!")
-        logger.error("📊 Environment Variables Diagnostic:")
+        logger.error("📋 Environment Variables Diagnostic:")
         logger.error(f"   REDIS_URL: {'SET (' + str(len(REDIS_URL)) + ' chars)' if REDIS_URL else 'MISSING'}")
         logger.error(f"   PORT: {os.getenv('PORT', 'MISSING')}")
         logger.error(f"   ENVIRONMENT: {os.getenv('ENVIRONMENT', 'MISSING')}")
@@ -176,6 +176,314 @@ async def api_request(method: str, endpoint: str, data: Optional[Dict] = None) -
             return {"status": response.status, "data": result, "success": response.status < 400}
     except Exception as e:
         return {"status": 500, "data": {"error": str(e)}, "success": False}
+
+# Frontend HTML with fixed web component guards
+async def serve_frontend(request):
+    """Serve the main frontend interface with proper web component guards"""
+    html_content = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InstaBids AI Hub - MCP Interface</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1E40AF, #F59E0B);
+            min-height: 100vh;
+            color: white;
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            padding: 20px; 
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 30px 0;
+        }
+        .logo { 
+            font-size: 3rem; 
+            font-weight: 800; 
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .subtitle { 
+            font-size: 1.2rem; 
+            opacity: 0.9; 
+        }
+        .status-card {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-healthy { background: #10B981; }
+        .status-error { background: #EF4444; }
+        .mcp-tools {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+        .tool-card {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .tool-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+        }
+        .tool-name { 
+            font-weight: 600; 
+            margin-bottom: 8px; 
+            color: #FCD34D;
+        }
+        .tool-desc { 
+            font-size: 0.9rem; 
+            opacity: 0.8; 
+        }
+        .btn {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+            margin: 5px;
+        }
+        .btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-1px);
+        }
+        .endpoint-info {
+            background: rgba(0,0,0,0.2);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9rem;
+        }
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+        .mcp-autosize-textarea {
+            width: 100%;
+            min-height: 100px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 8px;
+            padding: 12px;
+            color: white;
+            font-family: inherit;
+            resize: vertical;
+        }
+        .mcp-autosize-textarea::placeholder {
+            color: rgba(255,255,255,0.6);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="logo">🚀 InstaBids AI Hub</h1>
+            <p class="subtitle">Model Context Protocol Interface</p>
+        </div>
+
+        <div class="status-card">
+            <h2>🔍 System Status</h2>
+            <div id="system-status">
+                <div>📡 <span class="status-indicator status-healthy"></span> Loading system status...</div>
+            </div>
+        </div>
+
+        <div class="status-card">
+            <h2>🛠️ Available MCP Tools</h2>
+            <div id="mcp-tools-list">Loading tools...</div>
+            
+            <div class="endpoint-info">
+                <strong>API Endpoints:</strong><br>
+                • GET /mcp/tools - List available tools<br>
+                • POST /mcp/call - Execute tool calls<br>
+                • GET /health - System health check
+            </div>
+        </div>
+
+        <div class="status-card">
+            <h2>🧪 Tool Testing Interface</h2>
+            <div>
+                <select id="tool-selector" class="btn" style="width: 200px;">
+                    <option value="">Select a tool...</option>
+                </select>
+                <button onclick="testTool()" class="btn">🚀 Test Tool</button>
+            </div>
+            
+            <div style="margin-top: 15px;">
+                <textarea id="tool-args" class="mcp-autosize-textarea" placeholder='{"arg1": "value1", "arg2": "value2"}'></textarea>
+            </div>
+            
+            <div id="tool-result" style="margin-top: 15px; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 8px; display: none;">
+                <strong>Result:</strong>
+                <pre id="result-content"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 🔧 WEB COMPONENT GUARDS - Prevent redefinition conflicts
+        class McpAutosizeTextarea extends HTMLElement {
+            constructor() {
+                super();
+                this.addEventListener('input', this.autoResize.bind(this));
+            }
+            
+            autoResize() {
+                this.style.height = 'auto';
+                this.style.height = this.scrollHeight + 'px';
+            }
+            
+            connectedCallback() {
+                this.autoResize();
+            }
+        }
+
+        // ✅ SAFE COMPONENT REGISTRATION - Only define if not already defined
+        if (!customElements.get('mcp-autosize-textarea')) {
+            customElements.define('mcp-autosize-textarea', McpAutosizeTextarea);
+            console.log('✅ MCP autosize textarea component registered safely');
+        } else {
+            console.log('ℹ️ MCP autosize textarea component already exists - skipping redefinition');
+        }
+
+        // Initialize the interface
+        let systemStatus = null;
+        let availableTools = [];
+
+        async function loadSystemStatus() {
+            try {
+                const response = await fetch('/health');
+                systemStatus = await response.json();
+                
+                const statusEl = document.getElementById('system-status');
+                const redisStatus = systemStatus.redis?.status || 'unknown';
+                const statusClass = redisStatus === 'connected' ? 'status-healthy' : 'status-error';
+                
+                statusEl.innerHTML = `
+                    <div>📡 <span class="status-indicator ${statusClass}"></span> Server: ${systemStatus.status}</div>
+                    <div>🗄️ <span class="status-indicator ${statusClass}"></span> Redis: ${redisStatus}</div>
+                    <div>⚡ <span class="status-indicator status-healthy"></span> Version: ${systemStatus.version}</div>
+                    <div>🌐 <span class="status-indicator status-healthy"></span> Port: ${systemStatus.port}</div>
+                `;
+            } catch (error) {
+                console.error('Failed to load system status:', error);
+                document.getElementById('system-status').innerHTML = 
+                    '<div>❌ <span class="status-indicator status-error"></span> Failed to load status</div>';
+            }
+        }
+
+        async function loadMcpTools() {
+            try {
+                const response = await fetch('/mcp/tools');
+                const data = await response.json();
+                availableTools = data.tools || [];
+                
+                const toolsEl = document.getElementById('mcp-tools-list');
+                const selectorEl = document.getElementById('tool-selector');
+                
+                if (availableTools.length === 0) {
+                    toolsEl.innerHTML = '<p>No tools available</p>';
+                    return;
+                }
+                
+                // Populate tools display
+                toolsEl.innerHTML = '<div class="mcp-tools">' + 
+                    availableTools.map(tool => `
+                        <div class="tool-card">
+                            <div class="tool-name">${tool.name}</div>
+                            <div class="tool-desc">${tool.description}</div>
+                        </div>
+                    `).join('') + '</div>';
+                
+                // Populate tool selector
+                selectorEl.innerHTML = '<option value="">Select a tool...</option>' +
+                    availableTools.map(tool => `<option value="${tool.name}">${tool.name}</option>`).join('');
+                
+            } catch (error) {
+                console.error('Failed to load MCP tools:', error);
+                document.getElementById('mcp-tools-list').innerHTML = '<p>❌ Failed to load tools</p>';
+            }
+        }
+
+        async function testTool() {
+            const toolName = document.getElementById('tool-selector').value;
+            const argsText = document.getElementById('tool-args').value;
+            const resultEl = document.getElementById('tool-result');
+            const contentEl = document.getElementById('result-content');
+            
+            if (!toolName) {
+                alert('Please select a tool first');
+                return;
+            }
+            
+            let args = {};
+            if (argsText.trim()) {
+                try {
+                    args = JSON.parse(argsText);
+                } catch (error) {
+                    alert('Invalid JSON in arguments field');
+                    return;
+                }
+            }
+            
+            try {
+                resultEl.style.display = 'block';
+                contentEl.textContent = 'Loading...';
+                
+                const response = await fetch('/mcp/call', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: toolName, arguments: args })
+                });
+                
+                const result = await response.json();
+                contentEl.textContent = JSON.stringify(result, null, 2);
+                
+            } catch (error) {
+                contentEl.textContent = 'Error: ' + error.message;
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSystemStatus();
+            loadMcpTools();
+            
+            // Refresh status every 30 seconds
+            setInterval(loadSystemStatus, 30000);
+        });
+    </script>
+</body>
+</html>"""
+    
+    return web.Response(text=html_content, content_type='text/html')
 
 # HTTP Handlers
 async def health_check(request):
@@ -311,14 +619,14 @@ async def mcp_call_tool(request):
         tool_name = data.get("name")
         args = data.get("arguments", {})
         
-        logger.info(f"🛧 MCP Tool called: {tool_name} with args: {args}")
+        logger.info(f"🛠️ MCP Tool called: {tool_name} with args: {args}")
         
         # Log tool usage to Valkey
         redis = get_redis_client()
         if redis:
             try:
                 redis.hincrby("ai-hub:tool_usage", tool_name, 1)
-                logger.debug(f"📊 Tool usage logged for: {tool_name}")
+                logger.debug(f"📋 Tool usage logged for: {tool_name}")
             except Exception as e:
                 logger.warning(f"⚠️ Failed to log tool usage: {e}")
         
@@ -441,7 +749,7 @@ async def main():
     app = web.Application()
     
     # Routes
-    app.router.add_get('/', health_check)
+    app.router.add_get('/', serve_frontend)  # 🎉 NEW: Frontend interface
     app.router.add_get('/health', health_check)
     app.router.add_get('/mcp/tools', mcp_tools)
     app.router.add_post('/mcp/call', mcp_call_tool)
@@ -464,6 +772,7 @@ async def main():
     logger.info(f"✅ Health Check: http://localhost:{PORT}/health")
     logger.info(f"🛠️ MCP Tools: http://localhost:{PORT}/mcp/tools")
     logger.info(f"⚡ MCP Call: http://localhost:{PORT}/mcp/call")
+    logger.info(f"🎨 Frontend UI: http://localhost:{PORT}/")  # 🎉 NEW: Frontend endpoint
     
     # Start server
     runner = web.AppRunner(app)
