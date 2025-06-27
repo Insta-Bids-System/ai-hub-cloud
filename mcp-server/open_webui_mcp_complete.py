@@ -275,15 +275,46 @@ async def cleanup():
         redis_client.close()
 
 async def main():
-    """Run the MCP server"""
+    """Run the MCP server with container support"""
     redis = get_redis_client()
     redis.set("ai-hub:mcp_server:status", "running")
     
-    async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-        try:
-            await server.run(read_stream, write_stream)
-        finally:
-            await cleanup()
+    # Check if running in container/proxy mode
+    is_container = os.getenv("MCPO_MODE") == "proxy"
+    
+    if is_container:
+        # Running in Docker with mcpo proxy - keep server alive
+        print("🐳 Starting MCP server in container mode...")
+        
+        async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
+            try:
+                # Run server in background task
+                server_task = asyncio.create_task(server.run(read_stream, write_stream))
+                
+                # Keep container alive with heartbeat
+                while True:
+                    await asyncio.sleep(10)
+                    redis.set("ai-hub:mcp_server:heartbeat", datetime.now().isoformat())
+                    
+            except asyncio.CancelledError:
+                print("🛑 Server shutting down...")
+                server_task.cancel()
+                await cleanup()
+                raise
+            except Exception as e:
+                print(f"❌ Server error: {e}")
+                await cleanup()
+                raise
+            finally:
+                await cleanup()
+    else:
+        # Running directly with stdio (Claude Desktop)
+        print("💻 Starting MCP server in stdio mode...")
+        async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
+            try:
+                await server.run(read_stream, write_stream)
+            finally:
+                await cleanup()
 
 if __name__ == "__main__":
     asyncio.run(main())
