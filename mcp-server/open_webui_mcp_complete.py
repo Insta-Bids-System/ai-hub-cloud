@@ -9,6 +9,7 @@ import aiohttp
 import json
 import os
 import redis
+import ssl
 from aiohttp import web
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -24,14 +25,40 @@ redis_client = None
 session = None
 
 def get_redis_client():
-    """Get Redis client with connection pooling"""
+    """Get Redis client with connection pooling and SSL support"""
     global redis_client
     if redis_client is None:
         try:
-            redis_client = redis.from_url(REDIS_URL, decode_responses=True)
-            redis_client.ping()  # Test connection
+            # Handle DigitalOcean SSL Redis
+            if REDIS_URL.startswith("rediss://"):
+                # SSL connection with cert verification disabled for managed Redis
+                redis_client = redis.from_url(
+                    REDIS_URL, 
+                    decode_responses=True,
+                    ssl_cert_reqs=ssl.CERT_NONE,
+                    ssl_check_hostname=False,
+                    socket_timeout=5,
+                    socket_connect_timeout=5,
+                    retry_on_timeout=True,
+                    health_check_interval=30
+                )
+            else:
+                # Standard Redis connection
+                redis_client = redis.from_url(
+                    REDIS_URL, 
+                    decode_responses=True,
+                    socket_timeout=5,
+                    socket_connect_timeout=5,
+                    retry_on_timeout=True
+                )
+            
+            # Test connection
+            redis_client.ping()
+            print(f"✅ Redis connected successfully to {REDIS_URL[:50]}...")
+            
         except Exception as e:
             print(f"⚠️  Redis connection failed: {e}")
+            print(f"   Redis URL: {REDIS_URL[:50]}...")
             redis_client = None
     return redis_client
 
@@ -279,14 +306,17 @@ async def main():
     app.router.add_get('/mcp/tools', mcp_tools)
     app.router.add_post('/mcp/call', mcp_call_tool)
     
-    # Set Redis status
+    # Initialize Redis connection
     redis = get_redis_client()
     if redis:
         try:
             redis.set("ai-hub:mcp_server:status", "running")
             redis.set("ai-hub:mcp_server:start_time", datetime.now().isoformat())
-        except:
-            pass
+            print("🔗 Redis integration enabled")
+        except Exception as e:
+            print(f"⚠️  Redis init failed: {e}")
+    else:
+        print("📱 Running without Redis (non-critical)")
     
     print(f"🚀 Starting InstaBids AI Hub on port {PORT}")
     print(f"🔗 Health Check: http://localhost:{PORT}/health")
