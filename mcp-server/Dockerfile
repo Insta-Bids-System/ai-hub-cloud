@@ -2,6 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Cache invalidation comment - REBUILD: 2025-06-26-18:50 PST - Force fresh build for import fix
+# This comment forces Docker to rebuild all subsequent layers and bypass cache
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
