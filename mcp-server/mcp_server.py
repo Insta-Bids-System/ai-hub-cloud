@@ -12,7 +12,7 @@ import redis.asyncio as redis
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from mcp.server import Server
-from mcp.server.models import Tool, TextContent, CallToolRequest, CallToolResult
+from mcp.types import Tool, TextContent, CallToolRequest, CallToolResult
 import mcp.server.stdio
 
 # Configuration from environment
@@ -226,7 +226,7 @@ async def create_instabids_mobile_workspace() -> CallToolResult:
 - Use NativeWind for styling (Tailwind for React Native)
 - Implement Zustand for state management
 
-🏗️ Tech Stack:
+🛠️ Tech Stack:
 - React Native with Expo
 - TypeScript
 - NativeWind (Tailwind CSS for React Native)
@@ -307,7 +307,7 @@ async def create_instabridge_api_workspace() -> CallToolResult:
 - Security and authentication expert
 - Third-party service integrations
 
-🏗️ Tech Stack:
+🛠️ Tech Stack:
 - Node.js with TypeScript
 - Express.js framework
 - PostgreSQL (Supabase)
@@ -321,7 +321,7 @@ async def create_instabridge_api_workspace() -> CallToolResult:
 - Third-party API integrations
 - Error handling and logging
 
-🛡️ Security Focus:
+🔐️ Security Focus:
 - Input validation and sanitization
 - Proper authentication flows
 - Rate limiting and CORS
@@ -389,7 +389,7 @@ async def create_general_dev_workspace(project_name: str) -> CallToolResult:
 - Modern development practices
 - Clean, maintainable code focus
 
-🏗️ InstaBids Tech Standards:
+🛠️ InstaBids Tech Standards:
 - Frontend: React Native (mobile) or Next.js (web)
 - Backend: Node.js with TypeScript
 - Database: PostgreSQL (Supabase)
@@ -402,7 +402,7 @@ async def create_general_dev_workspace(project_name: str) -> CallToolResult:
 - Success: #10B981
 - Error: #EF4444
 
-📋 Development Principles:
+🚀 Development Principles:
 - Component-driven development
 - Type safety with TypeScript
 - Clean code and documentation
@@ -500,7 +500,7 @@ PROJECTS:
 2. InstaBridge API Developer (Node.js/TypeScript expert)
 3. InstaBids Core Developer (Full-stack generalist)
 
-💡 Usage Instructions:
+📚 Usage Instructions:
 - Start any chat and reference the workspace name
 - Each workspace has specialized knowledge and context
 - All workspaces know InstaBids brand guidelines
@@ -515,7 +515,7 @@ async def workspace_list() -> CallToolResult:
     workspaces = await r.hgetall("ai-hub:workspaces")
     
     if workspaces:
-        workspace_text = "📋 Created Workspaces:\n\n"
+        workspace_text = "🚀 Created Workspaces:\n\n"
         for key, value in workspaces.items():
             data = json.loads(value)
             workspace_text += f"🔹 {data['name']} (ID: {data['chat_id'][:8]}...)\n"
@@ -535,7 +535,7 @@ async def workspace_list() -> CallToolResult:
             ]
             
             if workspace_chats:
-                workspace_text = f"📋 Found {len(workspace_chats)} Workspaces:\n\n"
+                workspace_text = f"🚀 Found {len(workspace_chats)} Workspaces:\n\n"
                 for chat in workspace_chats:
                     workspace_text += f"🔹 {chat['title']} (ID: {chat['id'][:8]}...)\n"
                 
@@ -642,7 +642,7 @@ async def system_status() -> CallToolResult:
         status_text += f"❌ Redis: {str(e)}\n"
     
     # Check API Authentication
-    status_text += f"\n🔑 API Key: {'Set' if API_KEY != 'sk-default-key' else 'Not configured'}\n"
+    status_text += f"\n🔐 API Key: {'Set' if API_KEY != 'sk-default-key' else 'Not configured'}\n"
     
     return CallToolResult(
         content=[TextContent(type="text", text=status_text)]
@@ -659,18 +659,18 @@ async def redis_status() -> CallToolResult:
         # Get our keys
         ai_hub_keys = await r.keys("ai-hub:*")
         
-        status_text = f"""📊 Redis Status:
+        status_text = f"""🚀 Redis Status:
 
 ✅ Connection: Successful
 🔗 URL: {REDIS_URL}
 
-📈 Server Stats:
+🚀 Server Stats:
 - Version: {info.get('redis_version', 'Unknown')}
 - Memory Used: {info.get('used_memory_human', 'Unknown')}
 - Total Keys: {await r.dbsize()}
 - Connected Clients: {info.get('connected_clients', 0)}
 
-🔑 AI Hub Keys ({len(ai_hub_keys)} total):
+🔐 AI Hub Keys ({len(ai_hub_keys)} total):
 """
         
         # Group keys by type
