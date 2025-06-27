@@ -34,5 +34,5 @@ EXPOSE 8888
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD /healthcheck.sh
 
-# Fix: Use mcpo command directly, not python -m mcpo
-CMD ["mcpo", "--host", "0.0.0.0", "--port", "8888", "--mode", "proxy", "--", "python", "mcp_server.py"]
+# FIXED: Remove --mode proxy (doesn't exist in mcpo)
+CMD ["mcpo", "--host", "0.0.0.0", "--port", "8888", "--", "python", "mcp_server.py"]
