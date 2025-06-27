@@ -23,16 +23,9 @@ RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.
 COPY mcp-server/open_webui_mcp_complete.py mcp_server.py
 COPY mcp-server/auth_handler.py .
 
-# Create a healthcheck script
-RUN echo '#!/bin/sh\ncurl -f http://localhost:8888/health || exit 1' > /healthcheck.sh && \
-    chmod +x /healthcheck.sh
-
 # Expose the MCP server port
 EXPOSE 8888
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD /healthcheck.sh
-
-# FIXED: Remove --mode proxy (doesn't exist in mcpo)
+# FIXED: Remove health check and use correct mcpo syntax
+# mcpo will proxy the MCP server and provide the HTTP endpoints
 CMD ["mcpo", "--host", "0.0.0.0", "--port", "8888", "--", "python", "mcp_server.py"]
