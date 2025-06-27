@@ -10,9 +10,9 @@ import json
 import os
 import redis
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import import datetime
 from mcp.server import Server
-from mcp.server.models import Tool, TextContent, CallToolRequest, CallToolResult
+from mcp.types import Tool, TextContent, CallToolRequest, CallToolResult
 import mcp.server.stdio
 from auth_handler import AuthHandler
 
