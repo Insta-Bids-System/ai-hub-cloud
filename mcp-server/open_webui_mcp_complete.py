@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 InstaBids AI Hub - HTTP MCP Server
-FIXED: Simplified Redis connection matching MCP tools pattern
+FIXED: Valkey 8.0.3 URL Query Parameter Solution (Context7 Research)
 """
 
 import asyncio
@@ -34,39 +34,37 @@ redis_client = None
 session = None
 
 def get_redis_client():
-    """Simplified Redis client matching MCP tools successful pattern"""
+    """VALKEY 8.0.3 URL QUERY PARAMETER FIX - Based on Context7 research"""
     global redis_client
     if redis_client is None:
-        redis_url = REDIS_URL
-        logger.info("🔍 Starting SIMPLIFIED Redis connection (matching MCP pattern)...")
-        logger.info(f"📋 Redis URL: {redis_url[:20]}...{redis_url[-10:]}")
+        base_redis_url = REDIS_URL
+        logger.info("🎯 IMPLEMENTING VALKEY 8.0.3 URL QUERY PARAMETER FIX...")
+        logger.info(f"📋 Base Redis URL: {base_redis_url[:20]}...{base_redis_url[-10:]}")
         
         # Parse URL for debugging
         try:
-            parsed = urlparse(redis_url)
+            parsed = urlparse(base_redis_url)
             logger.info(f"📊 Parsed URL - Host: {parsed.hostname}, Port: {parsed.port}, SSL: {parsed.scheme == 'rediss'}")
         except Exception as e:
             logger.error(f"❌ URL parsing failed: {e}")
         
-        # Strategy 1: Basic SSL connection (matching MCP tools)
+        # Strategy 1: URL Query Parameters (CORRECT for Valkey 8.0.3)
         try:
-            logger.info("🔐 Strategy 1: Basic SSL connection (MCP pattern)...")
-            redis_client = redis.from_url(
-                redis_url,
-                decode_responses=True,
-                ssl_cert_reqs=ssl.CERT_NONE,
-                ssl_check_hostname=False
-            )
+            logger.info("🎯 Strategy 1: URL query parameters (Valkey-compatible)...")
+            redis_url_fixed = f"{base_redis_url}?ssl_cert_reqs=none&decode_responses=true"
+            logger.info(f"📋 Fixed URL: {redis_url_fixed[:50]}...{redis_url_fixed[-20:]}")
+            
+            redis_client = redis.from_url(redis_url_fixed)
             
             # Test connection
             redis_client.ping()
-            logger.info("✅ Strategy 1 SUCCESS: Basic SSL connection established!")
+            logger.info("✅ SUCCESS: Valkey URL query parameter connection established!")
             
-            # Test basic operations to match MCP success
-            test_key = "ai-hub:python:connection-test"
-            redis_client.set(test_key, "python-connection-working", ex=60)
+            # Test operations to confirm full functionality
+            test_key = "ai-hub:valkey:connection-test"
+            redis_client.set(test_key, "valkey-url-params-working", ex=60)
             test_result = redis_client.get(test_key)
-            logger.info(f"✅ Redis operations test: {test_result}")
+            logger.info(f"✅ Valkey operation test: {test_result}")
             
             return redis_client
             
@@ -74,63 +72,80 @@ def get_redis_client():
             logger.error(f"❌ Strategy 1 FAILED: {type(e).__name__}: {e}")
             redis_client = None
         
-        # Strategy 2: Even simpler SSL connection
+        # Strategy 2: Alternative URL parameter format
         try:
-            logger.info("🔐 Strategy 2: Minimal SSL connection...")
-            redis_client = redis.from_url(redis_url, decode_responses=True)
+            logger.info("🔄 Strategy 2: Alternative URL parameter format...")
+            redis_url_alt = f"{base_redis_url}?ssl_cert_reqs=CERT_NONE&decode_responses=True"
+            logger.info(f"📋 Alt URL: {redis_url_alt[:50]}...{redis_url_alt[-20:]}")
+            
+            redis_client = redis.from_url(redis_url_alt)
             redis_client.ping()
-            logger.info("✅ Strategy 2 SUCCESS: Minimal SSL connection established!")
+            logger.info("✅ SUCCESS: Alternative URL format connection established!")
             return redis_client
             
         except Exception as e:
             logger.error(f"❌ Strategy 2 FAILED: {type(e).__name__}: {e}")
             redis_client = None
         
-        # Strategy 3: Direct connection with explicit SSL
+        # Strategy 3: Simplified Valkey connection (no extra params)
         try:
-            logger.info("🔐 Strategy 3: Direct SSL connection...")
-            parsed = urlparse(redis_url)
-            
-            # Create connection pool manually
-            redis_client = redis.Redis(
-                host=parsed.hostname,
-                port=parsed.port,
-                password=parsed.password,
-                username=parsed.username or 'default',
-                ssl=True,
-                ssl_cert_reqs=ssl.CERT_NONE,
-                ssl_check_hostname=False,
-                decode_responses=True
-            )
-            
+            logger.info("🔧 Strategy 3: Simplified Valkey connection...")
+            redis_client = redis.from_url(base_redis_url)
             redis_client.ping()
-            logger.info("✅ Strategy 3 SUCCESS: Direct SSL connection established!")
+            logger.info("✅ SUCCESS: Simplified Valkey connection established!")
             return redis_client
             
         except Exception as e:
             logger.error(f"❌ Strategy 3 FAILED: {type(e).__name__}: {e}")
             redis_client = None
         
-        # Strategy 4: Non-SSL fallback (last resort)
+        # Strategy 4: Manual Redis constructor with parsed URL
         try:
-            logger.info("🔓 Strategy 4: Non-SSL fallback...")
-            non_ssl_url = redis_url.replace('rediss://', 'redis://')
-            logger.info(f"📋 Non-SSL URL: {non_ssl_url[:20]}...{non_ssl_url[-10:]}")
+            logger.info("🛠️ Strategy 4: Manual Redis constructor...")
+            parsed = urlparse(base_redis_url)
             
-            redis_client = redis.from_url(non_ssl_url, decode_responses=True)
+            redis_client = redis.Redis(
+                host=parsed.hostname,
+                port=parsed.port,
+                password=parsed.password,
+                username=parsed.username or 'default',
+                ssl=True if parsed.scheme == 'rediss' else False,
+                ssl_cert_reqs=None,
+                ssl_check_hostname=False,
+                decode_responses=True,
+                socket_timeout=10,
+                socket_connect_timeout=15
+            )
+            
             redis_client.ping()
-            logger.info("✅ Strategy 4 SUCCESS: Non-SSL connection established!")
+            logger.info("✅ SUCCESS: Manual constructor connection established!")
             return redis_client
             
         except Exception as e:
             logger.error(f"❌ Strategy 4 FAILED: {type(e).__name__}: {e}")
             redis_client = None
         
+        # Strategy 5: Non-SSL fallback (last resort)
+        try:
+            logger.info("🔓 Strategy 5: Non-SSL fallback...")
+            non_ssl_url = base_redis_url.replace('rediss://', 'redis://')
+            logger.info(f"📋 Non-SSL URL: {non_ssl_url[:20]}...{non_ssl_url[-10:]}")
+            
+            redis_client = redis.from_url(non_ssl_url, decode_responses=True)
+            redis_client.ping()
+            logger.info("✅ SUCCESS: Non-SSL fallback connection established!")
+            return redis_client
+            
+        except Exception as e:
+            logger.error(f"❌ Strategy 5 FAILED: {type(e).__name__}: {e}")
+            redis_client = None
+        
         # All strategies failed
-        logger.error("🚨 ALL CONNECTION STRATEGIES FAILED!")
+        logger.error("🚨 ALL VALKEY CONNECTION STRATEGIES FAILED!")
         logger.error("📊 Environment Variables Diagnostic:")
         logger.error(f"   REDIS_URL: {'SET (' + str(len(REDIS_URL)) + ' chars)' if REDIS_URL else 'MISSING'}")
         logger.error(f"   PORT: {os.getenv('PORT', 'MISSING')}")
+        logger.error(f"   ENVIRONMENT: {os.getenv('ENVIRONMENT', 'MISSING')}")
         
         return None
     
@@ -164,7 +179,7 @@ async def api_request(method: str, endpoint: str, data: Optional[Dict] = None) -
 
 # HTTP Handlers
 async def health_check(request):
-    """Enhanced health check endpoint with Redis diagnostics"""
+    """Enhanced health check endpoint with Valkey diagnostics"""
     redis = get_redis_client()
     
     # Redis connection status
@@ -199,19 +214,19 @@ async def health_check(request):
             except Exception as e:
                 redis_details["app_operations"] = f"error: {e}"
             
-            logger.info(f"✅ Health check passed - Redis connected: {redis_details}")
+            logger.info(f"✅ Health check passed - Valkey connected: {redis_details}")
             
         except Exception as e:
             redis_status = f"error: {str(e)}"
             redis_details = {"error": str(e)}
-            logger.error(f"❌ Health check Redis error: {e}")
+            logger.error(f"❌ Health check Valkey error: {e}")
     else:
-        logger.warning("⚠️ Health check - Redis client not available")
+        logger.warning("⚠️ Health check - Valkey client not available")
     
     return web.json_response({
         "status": "healthy",
         "service": "InstaBids AI Hub",
-        "version": "2.1.0-simplified",
+        "version": "2.2.0-valkey-fixed",
         "timestamp": datetime.now().isoformat(),
         "redis": {
             "status": redis_status,
@@ -298,7 +313,7 @@ async def mcp_call_tool(request):
         
         logger.info(f"🔧 MCP Tool called: {tool_name} with args: {args}")
         
-        # Log tool usage to Redis
+        # Log tool usage to Valkey
         redis = get_redis_client()
         if redis:
             try:
@@ -422,7 +437,7 @@ async def cleanup():
         redis_client.close()
 
 async def main():
-    """Run the simplified HTTP MCP server"""
+    """Run the Valkey-fixed HTTP MCP server"""
     app = web.Application()
     
     # Routes
@@ -431,19 +446,19 @@ async def main():
     app.router.add_get('/mcp/tools', mcp_tools)
     app.router.add_post('/mcp/call', mcp_call_tool)
     
-    # Initialize Redis connection with simplified approach
-    logger.info("🚀 Starting InstaBids AI Hub SIMPLIFIED Server...")
+    # Initialize Valkey connection with URL query parameter approach
+    logger.info("🚀 Starting InstaBids AI Hub VALKEY-FIXED Server...")
     redis = get_redis_client()
     if redis:
         try:
             redis.set("ai-hub:mcp_server:status", "running")
             redis.set("ai-hub:mcp_server:start_time", datetime.now().isoformat())
-            redis.set("ai-hub:mcp_server:version", "2.1.0-simplified")
-            logger.info("🔗 Redis integration enabled successfully")
+            redis.set("ai-hub:mcp_server:version", "2.2.0-valkey-fixed")
+            logger.info("🔗 Valkey integration enabled successfully")
         except Exception as e:
-            logger.error(f"❌ Redis init failed: {e}")
+            logger.error(f"❌ Valkey init failed: {e}")
     else:
-        logger.warning("📱 Running without Redis (non-critical)")
+        logger.warning("📱 Running without Valkey (non-critical)")
     
     logger.info(f"🌐 Starting InstaBids AI Hub on port {PORT}")
     logger.info(f"✅ Health Check: http://localhost:{PORT}/health")
