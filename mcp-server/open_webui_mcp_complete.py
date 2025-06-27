@@ -65,17 +65,17 @@ def get_redis_client():
             redis_client.set(test_key, "valkey-url-params-working", ex=60)
             test_result = redis_client.get(test_key)
             logger.info(f"✅ Valkey operation test: {test_result}")
-            
+        
             return redis_client
             
         except Exception as e:
             logger.error(f"❌ Strategy 1 FAILED: {type(e).__name__}: {e}")
             redis_client = None
         
-        # Strategy 2: Alternative URL parameter format
+        # Strategy 2: Alternative URL parameter format (FIXED SSL PARAMETER)
         try:
             logger.info("🔄 Strategy 2: Alternative URL parameter format...")
-            redis_url_alt = f"{base_redis_url}?ssl_cert_reqs=CERT_NONE&decode_responses=True"
+            redis_url_alt = f"{base_redis_url}?ssl_cert_reqs=none&decode_responses=true"
             logger.info(f"📋 Alt URL: {redis_url_alt[:50]}...{redis_url_alt[-20:]}")
             
             redis_client = redis.from_url(redis_url_alt)
@@ -130,7 +130,7 @@ def get_redis_client():
             logger.info("🔓 Strategy 5: Non-SSL fallback...")
             non_ssl_url = base_redis_url.replace('rediss://', 'redis://')
             logger.info(f"📋 Non-SSL URL: {non_ssl_url[:20]}...{non_ssl_url[-10:]}")
-            
+        
             redis_client = redis.from_url(non_ssl_url, decode_responses=True)
             redis_client.ping()
             logger.info("✅ SUCCESS: Non-SSL fallback connection established!")
@@ -311,7 +311,7 @@ async def mcp_call_tool(request):
         tool_name = data.get("name")
         args = data.get("arguments", {})
         
-        logger.info(f"🔧 MCP Tool called: {tool_name} with args: {args}")
+        logger.info(f"🛧 MCP Tool called: {tool_name} with args: {args}")
         
         # Log tool usage to Valkey
         redis = get_redis_client()
@@ -421,7 +421,7 @@ async def list_all_workspaces() -> Dict:
         ]
         
         return {
-            "message": f"📊 Found {len(workspaces)} workspaces",
+            "message": f"📋 Found {len(workspaces)} workspaces",
             "workspaces": workspace_list,
             "success": True
         }
