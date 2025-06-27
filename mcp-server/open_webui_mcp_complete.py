@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 InstaBids AI Hub - HTTP MCP Server
-Enhanced Redis connection with comprehensive debugging and multiple fallback strategies
+FIXED: Simplified Redis connection matching MCP tools pattern
 """
 
 import asyncio
@@ -34,14 +34,12 @@ redis_client = None
 session = None
 
 def get_redis_client():
-    """Enhanced Redis client with comprehensive debugging and multiple connection strategies"""
+    """Simplified Redis client matching MCP tools successful pattern"""
     global redis_client
     if redis_client is None:
         redis_url = REDIS_URL
-        logger.info("🔍 Starting enhanced Redis connection process...")
+        logger.info("🔍 Starting SIMPLIFIED Redis connection (matching MCP pattern)...")
         logger.info(f"📋 Redis URL: {redis_url[:20]}...{redis_url[-10:]}")
-        logger.info(f"🌐 Environment: {os.getenv('ENVIRONMENT', 'unknown')}")
-        logger.info(f"🚀 App Platform: {os.getenv('DIGITALOCEAN_APP_NAME', 'unknown')}")
         
         # Parse URL for debugging
         try:
@@ -50,62 +48,36 @@ def get_redis_client():
         except Exception as e:
             logger.error(f"❌ URL parsing failed: {e}")
         
-        # Strategy 1: Enhanced SSL with comprehensive parameters
+        # Strategy 1: Basic SSL connection (matching MCP tools)
         try:
-            logger.info("🔐 Strategy 1: Enhanced SSL configuration with all parameters...")
+            logger.info("🔐 Strategy 1: Basic SSL connection (MCP pattern)...")
             redis_client = redis.from_url(
                 redis_url,
                 decode_responses=True,
                 ssl_cert_reqs=ssl.CERT_NONE,
-                ssl_check_hostname=False,
-                ssl_ca_certs=None,
-                ssl_keyfile=None,
-                ssl_certfile=None,
-                socket_timeout=15,
-                socket_connect_timeout=20,
-                socket_keepalive=True,
-                socket_keepalive_options={},
-                retry_on_timeout=True,
-                retry_on_error=[redis.ConnectionError, redis.TimeoutError],
-                health_check_interval=30,
-                max_connections=20,
-                connection_pool_kwargs={
-                    'retry_on_timeout': True,
-                    'socket_keepalive': True
-                }
+                ssl_check_hostname=False
             )
             
-            # Test connection with timeout
+            # Test connection
             redis_client.ping()
-            logger.info("✅ Strategy 1 SUCCESS: Enhanced SSL connection established!")
+            logger.info("✅ Strategy 1 SUCCESS: Basic SSL connection established!")
             
-            # Test basic operations
-            test_key = "ai-hub:test:connection"
-            redis_client.set(test_key, "test_value", ex=60)
+            # Test basic operations to match MCP success
+            test_key = "ai-hub:python:connection-test"
+            redis_client.set(test_key, "python-connection-working", ex=60)
             test_result = redis_client.get(test_key)
-            redis_client.delete(test_key)
-            logger.info(f"✅ Redis operations test passed: {test_result}")
+            logger.info(f"✅ Redis operations test: {test_result}")
             
             return redis_client
             
         except Exception as e:
             logger.error(f"❌ Strategy 1 FAILED: {type(e).__name__}: {e}")
-            logger.error(f"   Error details: {str(e)}")
             redis_client = None
         
-        # Strategy 2: Minimal SSL configuration
+        # Strategy 2: Even simpler SSL connection
         try:
-            logger.info("🔐 Strategy 2: Minimal SSL configuration...")
-            redis_client = redis.from_url(
-                redis_url,
-                decode_responses=True,
-                ssl_cert_reqs=ssl.CERT_NONE,
-                ssl_check_hostname=False,
-                socket_timeout=15,
-                socket_connect_timeout=20,
-                retry_on_timeout=True
-            )
-            
+            logger.info("🔐 Strategy 2: Minimal SSL connection...")
+            redis_client = redis.from_url(redis_url, decode_responses=True)
             redis_client.ping()
             logger.info("✅ Strategy 2 SUCCESS: Minimal SSL connection established!")
             return redis_client
@@ -114,46 +86,38 @@ def get_redis_client():
             logger.error(f"❌ Strategy 2 FAILED: {type(e).__name__}: {e}")
             redis_client = None
         
-        # Strategy 3: Custom SSL context
+        # Strategy 3: Direct connection with explicit SSL
         try:
-            logger.info("🛠️ Strategy 3: Custom SSL context configuration...")
-            ssl_context = ssl.create_default_context()
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
-            ssl_context.set_ciphers('DEFAULT')
+            logger.info("🔐 Strategy 3: Direct SSL connection...")
+            parsed = urlparse(redis_url)
             
-            redis_client = redis.from_url(
-                redis_url,
-                decode_responses=True,
+            # Create connection pool manually
+            redis_client = redis.Redis(
+                host=parsed.hostname,
+                port=parsed.port,
+                password=parsed.password,
+                username=parsed.username or 'default',
+                ssl=True,
                 ssl_cert_reqs=ssl.CERT_NONE,
                 ssl_check_hostname=False,
-                ssl_context=ssl_context,
-                socket_timeout=15,
-                socket_connect_timeout=20
+                decode_responses=True
             )
             
             redis_client.ping()
-            logger.info("✅ Strategy 3 SUCCESS: Custom SSL context connection established!")
+            logger.info("✅ Strategy 3 SUCCESS: Direct SSL connection established!")
             return redis_client
             
         except Exception as e:
             logger.error(f"❌ Strategy 3 FAILED: {type(e).__name__}: {e}")
             redis_client = None
         
-        # Strategy 4: Force non-SSL connection (fallback)
+        # Strategy 4: Non-SSL fallback (last resort)
         try:
-            logger.info("🔓 Strategy 4: Non-SSL fallback connection...")
+            logger.info("🔓 Strategy 4: Non-SSL fallback...")
             non_ssl_url = redis_url.replace('rediss://', 'redis://')
             logger.info(f"📋 Non-SSL URL: {non_ssl_url[:20]}...{non_ssl_url[-10:]}")
             
-            redis_client = redis.from_url(
-                non_ssl_url,
-                decode_responses=True,
-                socket_timeout=15,
-                socket_connect_timeout=20,
-                retry_on_timeout=True
-            )
-            
+            redis_client = redis.from_url(non_ssl_url, decode_responses=True)
             redis_client.ping()
             logger.info("✅ Strategy 4 SUCCESS: Non-SSL connection established!")
             return redis_client
@@ -162,25 +126,11 @@ def get_redis_client():
             logger.error(f"❌ Strategy 4 FAILED: {type(e).__name__}: {e}")
             redis_client = None
         
-        # All strategies failed - comprehensive error reporting
+        # All strategies failed
         logger.error("🚨 ALL CONNECTION STRATEGIES FAILED!")
         logger.error("📊 Environment Variables Diagnostic:")
         logger.error(f"   REDIS_URL: {'SET (' + str(len(REDIS_URL)) + ' chars)' if REDIS_URL else 'MISSING'}")
         logger.error(f"   PORT: {os.getenv('PORT', 'MISSING')}")
-        logger.error(f"   ENVIRONMENT: {os.getenv('ENVIRONMENT', 'MISSING')}")
-        logger.error(f"   DIGITALOCEAN_APP_NAME: {os.getenv('DIGITALOCEAN_APP_NAME', 'MISSING')}")
-        logger.error(f"   DIGITALOCEAN_APP_ID: {os.getenv('DIGITALOCEAN_APP_ID', 'MISSING')}")
-        
-        # Network diagnostic info
-        logger.error("🌐 Network Diagnostic Info:")
-        try:
-            import socket
-            hostname = socket.gethostname()
-            local_ip = socket.gethostbyname(hostname)
-            logger.error(f"   Hostname: {hostname}")
-            logger.error(f"   Local IP: {local_ip}")
-        except Exception as e:
-            logger.error(f"   Network info failed: {e}")
         
         return None
     
@@ -214,7 +164,7 @@ async def api_request(method: str, endpoint: str, data: Optional[Dict] = None) -
 
 # HTTP Handlers
 async def health_check(request):
-    """Enhanced health check endpoint with comprehensive Redis diagnostics"""
+    """Enhanced health check endpoint with Redis diagnostics"""
     redis = get_redis_client()
     
     # Redis connection status
@@ -232,6 +182,7 @@ async def health_check(request):
             redis_details = {
                 "ping": ping_result,
                 "version": redis_info.get('redis_version', 'unknown'),
+                "server_name": redis_info.get('server_name', 'redis'),
                 "connected_clients": redis_info.get('connected_clients', 0),
                 "used_memory_human": redis_info.get('used_memory_human', 'unknown'),
                 "uptime_in_seconds": redis_info.get('uptime_in_seconds', 0)
@@ -241,10 +192,14 @@ async def health_check(request):
             try:
                 app_status = redis.get("ai-hub:mcp_server:status")
                 redis_details["app_status"] = app_status
-            except:
-                redis_details["app_status"] = "key_not_found"
+                
+                # Test write operation
+                redis.set("ai-hub:health_check", datetime.now().isoformat(), ex=300)
+                redis_details["last_health_check"] = "success"
+            except Exception as e:
+                redis_details["app_operations"] = f"error: {e}"
             
-            logger.info(f"✅ Health check passed - Redis connected with {redis_details}")
+            logger.info(f"✅ Health check passed - Redis connected: {redis_details}")
             
         except Exception as e:
             redis_status = f"error: {str(e)}"
@@ -256,14 +211,14 @@ async def health_check(request):
     return web.json_response({
         "status": "healthy",
         "service": "InstaBids AI Hub",
-        "version": "2.0.0-enhanced",
+        "version": "2.1.0-simplified",
         "timestamp": datetime.now().isoformat(),
         "redis": {
             "status": redis_status,
             "details": redis_details
         },
         "port": PORT,
-        "environment": os.getenv('ENVIRONMENT', 'unknown'),
+        "environment": os.getenv('ENVIRONMENT', 'production'),
         "deployment_id": os.getenv('DIGITALOCEAN_APP_ID', 'unknown')
     })
 
@@ -467,7 +422,7 @@ async def cleanup():
         redis_client.close()
 
 async def main():
-    """Run the enhanced HTTP MCP server"""
+    """Run the simplified HTTP MCP server"""
     app = web.Application()
     
     # Routes
@@ -476,14 +431,14 @@ async def main():
     app.router.add_get('/mcp/tools', mcp_tools)
     app.router.add_post('/mcp/call', mcp_call_tool)
     
-    # Initialize Redis connection with enhanced logging
-    logger.info("🚀 Starting InstaBids AI Hub Enhanced Server...")
+    # Initialize Redis connection with simplified approach
+    logger.info("🚀 Starting InstaBids AI Hub SIMPLIFIED Server...")
     redis = get_redis_client()
     if redis:
         try:
             redis.set("ai-hub:mcp_server:status", "running")
             redis.set("ai-hub:mcp_server:start_time", datetime.now().isoformat())
-            redis.set("ai-hub:mcp_server:version", "2.0.0-enhanced")
+            redis.set("ai-hub:mcp_server:version", "2.1.0-simplified")
             logger.info("🔗 Redis integration enabled successfully")
         except Exception as e:
             logger.error(f"❌ Redis init failed: {e}")
