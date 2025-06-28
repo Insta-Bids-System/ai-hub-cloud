@@ -9,5 +9,5 @@ RUN mkdir -p /srv
 # Expose port
 EXPOSE 80
 
-# Run filebrowser (without the leading slash)
-CMD [ "filebrowser" ]
+# Fix: Use proper command format for newer FileBrowser versions
+CMD [ "/filebrowser", "--config", "/.filebrowser.json" ]
