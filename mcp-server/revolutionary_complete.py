@@ -6,8 +6,9 @@ Tools: 200+ endpoints covering all Open WebUI capabilities
 Status: Production Ready
 """
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Response
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any, List, Optional
 import json
 import httpx
@@ -21,6 +22,15 @@ import asyncio
 # =============================================================================
 
 app = FastAPI(title="InstaBids AI Hub MCP Server")
+
+# Add CORS middleware for SSE support
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Working configuration (KEEP THIS):
 OPENWEBUI_BASE_URL = os.getenv("OPENWEBUI_URL", "http://open-webui:8080")
@@ -1106,60 +1116,97 @@ async def sse_endpoint(request: Request):
         raise HTTPException(status_code=404, detail="SSE endpoint not enabled")
     
     async def event_generator():
-        # Send initial connection message
-        yield f"data: {json.dumps({'type': 'connection', 'status': 'connected'})}\n\n"
-        
-        # Send all available tools
-        tools_data = []
-        for tool_name, tool_info in tools_registry.items():
-            # Extract parameter information
-            params = []
-            if 'parameters' in tool_info and tool_info['parameters']:
-                for param_name, param_type in tool_info['parameters'].items():
-                    params.append({
-                        "name": param_name,
-                        "type": str(param_type.__name__) if hasattr(param_type, '__name__') else str(param_type),
-                        "required": True  # You might want to make this configurable
-                    })
+        try:
+            # Send initial connection message with proper SSE format
+            yield f": SSE connection established\n\n"
+            yield f"data: {json.dumps({'type': 'connection', 'status': 'connected', 'timestamp': datetime.now().isoformat()})}\n\n"
             
-            tools_data.append({
-                "name": tool_name,
-                "description": tool_info["description"],
-                "parameters": params
-            })
-        
-        # Send tools in chunks to avoid overwhelming the client
-        chunk_size = 50
-        for i in range(0, len(tools_data), chunk_size):
-            chunk = tools_data[i:i + chunk_size]
-            tools_message = {
-                "type": "tools",
-                "tools": chunk,
-                "chunk": i // chunk_size + 1,
-                "total_chunks": (len(tools_data) + chunk_size - 1) // chunk_size,
-                "total_tools": len(tools_data)
-            }
-            yield f"data: {json.dumps(tools_message)}\n\n"
-            await asyncio.sleep(0.1)  # Small delay between chunks
-        
-        # Send completion message
-        yield f"data: {json.dumps({'type': 'tools_complete', 'total': len(tools_data)})}\n\n"
-        
-        # Keep connection alive with periodic pings
-        while True:
-            await asyncio.sleep(30)
-            yield f"data: {json.dumps({'type': 'ping', 'timestamp': datetime.now().isoformat()})}\n\n"
+            # Send all available tools
+            tools_data = []
+            for tool_name, tool_info in tools_registry.items():
+                # Extract parameter information
+                params = []
+                if 'parameters' in tool_info and tool_info['parameters']:
+                    for param_name, param_type in tool_info['parameters'].items():
+                        params.append({
+                            "name": param_name,
+                            "type": str(param_type.__name__) if hasattr(param_type, '__name__') else str(param_type),
+                            "required": True  # You might want to make this configurable
+                        })
+                
+                tools_data.append({
+                    "name": tool_name,
+                    "description": tool_info["description"],
+                    "parameters": params
+                })
+            
+            # Send tools in chunks to avoid overwhelming the client
+            chunk_size = 50
+            for i in range(0, len(tools_data), chunk_size):
+                chunk = tools_data[i:i + chunk_size]
+                tools_message = {
+                    "type": "tools",
+                    "tools": chunk,
+                    "chunk": i // chunk_size + 1,
+                    "total_chunks": (len(tools_data) + chunk_size - 1) // chunk_size,
+                    "total_tools": len(tools_data)
+                }
+                yield f"data: {json.dumps(tools_message)}\n\n"
+                await asyncio.sleep(0.1)  # Small delay between chunks
+            
+            # Send completion message
+            yield f"data: {json.dumps({'type': 'tools_complete', 'total': len(tools_data), 'timestamp': datetime.now().isoformat()})}\n\n"
+            
+            # Keep connection alive with periodic pings
+            while True:
+                await asyncio.sleep(30)
+                yield f": keepalive\n\n"
+                yield f"data: {json.dumps({'type': 'ping', 'timestamp': datetime.now().isoformat()})}\n\n"
+                
+        except asyncio.CancelledError:
+            # Clean shutdown
+            yield f"data: {json.dumps({'type': 'shutdown', 'timestamp': datetime.now().isoformat()})}\n\n"
+            raise
+        except Exception as e:
+            # Send error message
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'timestamp': datetime.now().isoformat()})}\n\n"
+            raise
     
-    return StreamingResponse(
+    # Create the streaming response with proper headers
+    response = StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable Nginx buffering
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "GET, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization"
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Allow-Credentials": "true"
+        }
+    )
+    
+    # Ensure Content-Type is set correctly
+    response.headers["Content-Type"] = "text/event-stream"
+    
+    return response
+
+# Handle CORS preflight for SSE
+@app.options("/sse")
+async def sse_options():
+    """Handle CORS preflight requests for SSE endpoint"""
+    return Response(
+        content="",
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "3600"
         }
     )
 
