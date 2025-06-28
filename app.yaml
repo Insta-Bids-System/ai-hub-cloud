@@ -1,0 +1,125 @@
+name: instabids-ai-hub-v2
+region: nyc
+
+services:
+  # Main Open WebUI Interface  
+  - name: open-webui
+    source_dir: /
+    github:
+      repo: Insta-Bids-System/ai-hub-cloud
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: open-webui/Dockerfile
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: basic-s
+    routes:
+      - path: /
+    envs:
+      - key: ENV
+        value: dev
+      - key: WEBUI_AUTH  
+        value: "true"
+      - key: ENABLE_API_KEY
+        value: "true"
+      - key: WEBUI_NAME
+        value: "InstaBids AI Hub"
+      - key: DATA_DIR
+        value: "/app/backend/data"
+      - key: WEBUI_SECRET_KEY
+        value: "instabids-revolutionary-ai-2024-secure"
+      - key: PORT
+        value: "8080"
+
+  # Revolutionary MCP Server (Original - Open WebUI tools)
+  - name: mcp-server
+    source_dir: /mcp-server
+    github:
+      repo: Insta-Bids-System/ai-hub-cloud
+      branch: main
+      deploy_on_push: true
+    run_command: python revolutionary_complete.py
+    http_port: 8888
+    instance_count: 1
+    instance_size_slug: basic-s
+    routes:
+      - path: /mcp
+    envs:
+      - key: OPENWEBUI_URL
+        value: "http://open-webui:8080"
+      - key: MCPO_PORT
+        value: "8888"
+      - key: MCPO_HOST
+        value: "0.0.0.0"
+      - key: ENABLE_SSE
+        value: "true"
+      - key: SSE_PATH
+        value: "/sse"
+
+  # GitHub MCP Server (Claude's GitHub Tools)
+  - name: github-mcp-server
+    source_dir: /github-mcp-server
+    github:
+      repo: Insta-Bids-System/ai-hub-cloud
+      branch: main
+      deploy_on_push: true
+    run_command: python main.py
+    http_port: 3001
+    instance_count: 1
+    instance_size_slug: basic-s
+    routes:
+      - path: /github
+    envs:
+      - key: MCP_PORT
+        value: "3001"
+      - key: MCP_HOST
+        value: "0.0.0.0"
+      - key: GITHUB_TOKEN
+        value: "${GITHUB_TOKEN}"
+
+  # DigitalOcean MCP Server (Claude's DigitalOcean Tools)  
+  - name: digitalocean-mcp-server
+    source_dir: /digitalocean-mcp-server
+    github:
+      repo: Insta-Bids-System/ai-hub-cloud
+      branch: main
+      deploy_on_push: true
+    run_command: python main.py
+    http_port: 3002
+    instance_count: 1
+    instance_size_slug: basic-s
+    routes:
+      - path: /digitalocean
+    envs:
+      - key: MCP_PORT
+        value: "3002"
+      - key: MCP_HOST
+        value: "0.0.0.0"
+      - key: DIGITALOCEAN_TOKEN
+        value: "${DIGITALOCEAN_TOKEN}"
+
+  # FileBrowser (Visual File Management)
+  - name: filebrowser
+    source_dir: /filebrowser
+    github:
+      repo: Insta-Bids-System/ai-hub-cloud
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: filebrowser/Dockerfile
+    http_port: 80
+    instance_count: 1
+    instance_size_slug: basic-s
+    routes:
+      - path: /files
+    envs:
+      - key: FB_ROOT
+        value: "/srv"
+      - key: FB_NOAUTH
+        value: "true"
+      - key: FB_DATABASE
+        value: "/database/filebrowser.db"
+
+# Optional: Add domain configuration
+domains:
+  - domain: aihub.instabids.ai
+    type: PRIMARY
