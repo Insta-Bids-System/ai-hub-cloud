@@ -16,6 +16,8 @@ import os
 import base64
 from datetime import datetime
 import asyncio
+import subprocess
+import shlex
 
 # =============================================================================
 # BASE MCP SERVER FRAMEWORK (KEEP THIS EXACT STRUCTURE)
@@ -1009,6 +1011,367 @@ async def get_web_search_config():
 async def update_web_search_config(config: Dict):
     """Update web search configuration"""
     return await call_openwebui_api("POST", "/api/v1/web/config/update", config)
+
+# =============================================================================
+# REVOLUTIONARY AGENT EXECUTION TOOLS (THE MISSING PIECE!)
+# =============================================================================
+
+@mcp_tool
+async def execute_script(script_path: str, args: Dict = None, timeout: int = 30):
+    """
+    Execute a Python script and return output - THE KEY TO SELF-MODIFYING AI!
+    This allows AI agents to run code they've written!
+    """
+    try:
+        # Security: Only allow execution within workspace directories
+        if not script_path.startswith('/app/workspaces/'):
+            return {"error": "Scripts must be in /app/workspaces/ directory"}
+        
+        # Prepare command
+        cmd = ['python', script_path]
+        
+        # Create subprocess
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        # Send args as JSON to stdin if provided
+        stdin_data = json.dumps(args).encode() if args else None
+        
+        # Run with timeout
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(input=stdin_data),
+                timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            process.kill()
+            return {
+                "error": "Script execution timed out",
+                "timeout": timeout
+            }
+        
+        return {
+            "success": True,
+            "output": stdout.decode(),
+            "error": stderr.decode() if stderr else None,
+            "exit_code": process.returncode
+        }
+    except Exception as e:
+        return {"error": f"Execution failed: {str(e)}"}
+
+@mcp_tool
+async def deploy_agent(name: str, script_path: str, port: int, auto_restart: bool = True):
+    """
+    Deploy an AI agent as a live service using PM2 - AGENTS CREATING AGENTS!
+    This enables recursive self-improvement and agent collaboration!
+    """
+    try:
+        # Validate workspace path
+        if not script_path.startswith('/app/workspaces/'):
+            return {"error": "Agents must be in /app/workspaces/ directory"}
+        
+        # Check if PM2 is installed
+        pm2_check = subprocess.run(['which', 'pm2'], capture_output=True)
+        if pm2_check.returncode != 0:
+            # Install PM2 if not present
+            subprocess.run(['npm', 'install', '-g', 'pm2'], check=True)
+        
+        # Stop existing instance if any
+        subprocess.run(['pm2', 'delete', name], capture_output=True)
+        
+        # Deploy the agent
+        cmd = [
+            'pm2', 'start', script_path,
+            '--name', name,
+            '--interpreter', 'python',
+            '--env', f'PORT={port}',
+            '--max-memory-restart', '500M'
+        ]
+        
+        if auto_restart:
+            cmd.extend(['--watch', '--watch-delay', '2000'])
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            # Save PM2 configuration
+            subprocess.run(['pm2', 'save'], capture_output=True)
+            
+            return {
+                "success": True,
+                "name": name,
+                "port": port,
+                "url": f"https://aihub.instabids.ai/agents/{name}",
+                "status": "deployed",
+                "message": f"Agent '{name}' deployed successfully on port {port}"
+            }
+        else:
+            return {
+                "error": f"Deployment failed: {result.stderr}"
+            }
+    except Exception as e:
+        return {"error": f"Deployment error: {str(e)}"}
+
+@mcp_tool
+async def list_running_agents():
+    """
+    List all currently running AI agents - SEE YOUR AI ARMY!
+    """
+    try:
+        result = subprocess.run(
+            ['pm2', 'jlist'],
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode == 0:
+            agents = json.loads(result.stdout)
+            return {
+                "agents": [
+                    {
+                        "name": agent['name'],
+                        "status": agent['pm2_env']['status'],
+                        "port": agent['pm2_env'].get('PORT', 'unknown'),
+                        "uptime": agent['pm2_env'].get('pm_uptime', 0),
+                        "memory": agent['monit'].get('memory', 0),
+                        "cpu": agent['monit'].get('cpu', 0)
+                    }
+                    for agent in agents
+                ],
+                "total": len(agents)
+            }
+        else:
+            return {"agents": [], "total": 0}
+    except Exception as e:
+        return {"error": f"Failed to list agents: {str(e)}"}
+
+@mcp_tool
+async def stop_agent(name: str):
+    """
+    Stop a running AI agent
+    """
+    try:
+        result = subprocess.run(
+            ['pm2', 'stop', name],
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode == 0:
+            return {
+                "success": True,
+                "message": f"Agent '{name}' stopped"
+            }
+        else:
+            return {"error": result.stderr}
+    except Exception as e:
+        return {"error": f"Failed to stop agent: {str(e)}"}
+
+@mcp_tool
+async def restart_agent(name: str):
+    """
+    Restart a running AI agent
+    """
+    try:
+        result = subprocess.run(
+            ['pm2', 'restart', name],
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode == 0:
+            return {
+                "success": True,
+                "message": f"Agent '{name}' restarted"
+            }
+        else:
+            return {"error": result.stderr}
+    except Exception as e:
+        return {"error": f"Failed to restart agent: {str(e)}"}
+
+@mcp_tool
+async def get_agent_logs(name: str, lines: int = 50):
+    """
+    Get logs from a running AI agent
+    """
+    try:
+        result = subprocess.run(
+            ['pm2', 'logs', name, '--lines', str(lines), '--nostream'],
+            capture_output=True,
+            text=True
+        )
+        
+        return {
+            "logs": result.stdout,
+            "error_logs": result.stderr if result.stderr else None
+        }
+    except Exception as e:
+        return {"error": f"Failed to get logs: {str(e)}"}
+
+@mcp_tool
+async def create_agent_endpoint(agent_name: str, port: int):
+    """
+    Create nginx routing for agent to be accessible at /agents/{name}
+    """
+    nginx_config = f"""
+location /agents/{agent_name}/ {{
+    proxy_pass http://localhost:{port}/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $host;
+    proxy_cache_bypass $http_upgrade;
+}}
+"""
+    
+    config_path = f"/etc/nginx/sites-available/agent-{agent_name}"
+    
+    try:
+        # Write nginx config
+        with open(config_path, 'w') as f:
+            f.write(nginx_config)
+        
+        # Enable the site
+        subprocess.run([
+            'ln', '-sf', 
+            config_path, 
+            f'/etc/nginx/sites-enabled/agent-{agent_name}'
+        ], check=True)
+        
+        # Test and reload nginx
+        test = subprocess.run(['nginx', '-t'], capture_output=True)
+        if test.returncode == 0:
+            subprocess.run(['nginx', '-s', 'reload'], check=True)
+            return {
+                "success": True,
+                "url": f"https://aihub.instabids.ai/agents/{agent_name}",
+                "message": f"Agent endpoint created successfully"
+            }
+        else:
+            return {"error": f"Nginx config test failed: {test.stderr}"}
+    except Exception as e:
+        return {"error": f"Failed to create endpoint: {str(e)}"}
+
+# =============================================================================
+# WORKSPACE AND FILE MANAGEMENT TOOLS
+# =============================================================================
+
+@mcp_tool
+async def create_workspace(name: str, description: str = ""):
+    """
+    Create a new workspace directory for AI agents and projects
+    """
+    workspace_path = f"/app/workspaces/{name}"
+    
+    try:
+        # Create directory
+        os.makedirs(workspace_path, exist_ok=True)
+        
+        # Create metadata file
+        metadata = {
+            "name": name,
+            "description": description,
+            "created_at": datetime.now().isoformat(),
+            "type": "workspace"
+        }
+        
+        with open(f"{workspace_path}/.metadata.json", "w") as f:
+            json.dump(metadata, f, indent=2)
+        
+        return {
+            "success": True,
+            "path": workspace_path,
+            "message": f"Workspace '{name}' created successfully"
+        }
+    except Exception as e:
+        return {"error": f"Failed to create workspace: {str(e)}"}
+
+@mcp_tool
+async def list_workspaces():
+    """
+    List all available workspaces
+    """
+    workspaces_dir = "/app/workspaces"
+    
+    try:
+        if not os.path.exists(workspaces_dir):
+            os.makedirs(workspaces_dir, exist_ok=True)
+        
+        workspaces = []
+        for item in os.listdir(workspaces_dir):
+            item_path = os.path.join(workspaces_dir, item)
+            if os.path.isdir(item_path):
+                metadata_path = os.path.join(item_path, ".metadata.json")
+                if os.path.exists(metadata_path):
+                    with open(metadata_path, "r") as f:
+                        metadata = json.load(f)
+                        workspaces.append(metadata)
+                else:
+                    workspaces.append({
+                        "name": item,
+                        "description": "No metadata available",
+                        "type": "workspace"
+                    })
+        
+        return {
+            "workspaces": workspaces,
+            "total": len(workspaces)
+        }
+    except Exception as e:
+        return {"error": f"Failed to list workspaces: {str(e)}"}
+
+@mcp_tool
+async def write_file(file_path: str, content: str):
+    """
+    Write content to a file
+    """
+    try:
+        # Ensure it's within workspaces
+        if not file_path.startswith('/app/workspaces/'):
+            return {"error": "Files must be in /app/workspaces/ directory"}
+        
+        # Create directory if needed
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        # Write file
+        with open(file_path, 'w') as f:
+            f.write(content)
+        
+        return {
+            "success": True,
+            "path": file_path,
+            "size": len(content),
+            "message": f"File written successfully"
+        }
+    except Exception as e:
+        return {"error": f"Failed to write file: {str(e)}"}
+
+@mcp_tool
+async def read_file(file_path: str):
+    """
+    Read content from a file
+    """
+    try:
+        # Ensure it's within workspaces
+        if not file_path.startswith('/app/workspaces/'):
+            return {"error": "Files must be in /app/workspaces/ directory"}
+        
+        # Read file
+        with open(file_path, 'r') as f:
+            content = f.read()
+        
+        return {
+            "success": True,
+            "path": file_path,
+            "content": content,
+            "size": len(content)
+        }
+    except Exception as e:
+        return {"error": f"Failed to read file: {str(e)}"}
 
 # =============================================================================
 # MCP SERVER ENDPOINTS (KEEP THESE)
