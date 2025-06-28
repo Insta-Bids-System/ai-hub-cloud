@@ -9,5 +9,5 @@ RUN mkdir -p /srv
 # Expose port
 EXPOSE 80
 
-# Run filebrowser
-CMD [ "/filebrowser" ]
+# Run filebrowser (without the leading slash)
+CMD [ "filebrowser" ]
