@@ -7,12 +7,14 @@ Status: Production Ready
 """
 
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import StreamingResponse
 from typing import Dict, Any, List, Optional
 import json
 import httpx
 import os
 import base64
 from datetime import datetime
+import asyncio
 
 # =============================================================================
 # BASE MCP SERVER FRAMEWORK (KEEP THIS EXACT STRUCTURE)
@@ -24,6 +26,10 @@ app = FastAPI(title="InstaBids AI Hub MCP Server")
 OPENWEBUI_BASE_URL = os.getenv("OPENWEBUI_URL", "http://open-webui:8080")
 MCP_PORT = int(os.getenv("MCPO_PORT", "8888"))
 MCP_HOST = os.getenv("MCPO_HOST", "0.0.0.0")
+
+# SSE Configuration
+ENABLE_SSE = os.getenv("ENABLE_SSE", "true").lower() == "true"
+SSE_PATH = os.getenv("SSE_PATH", "/sse")
 
 # Tools registry
 tools_registry = {}
@@ -1059,7 +1065,8 @@ async def root():
         "endpoints": {
             "tools_list": "/mcp/tools",
             "tool_call": "/mcp/call",
-            "health": "/health"
+            "health": "/health",
+            "sse": "/sse" if ENABLE_SSE else None
         }
     }
 
@@ -1086,6 +1093,77 @@ async def health_check():
         }
 
 # =============================================================================
+# NEW: SSE ENDPOINT FOR CLAUDE DESKTOP
+# =============================================================================
+
+@app.get("/sse")
+async def sse_endpoint(request: Request):
+    """
+    Server-Sent Events endpoint for Claude Desktop MCP integration
+    This allows Claude Desktop to discover and use all 200+ tools
+    """
+    if not ENABLE_SSE:
+        raise HTTPException(status_code=404, detail="SSE endpoint not enabled")
+    
+    async def event_generator():
+        # Send initial connection message
+        yield f"data: {json.dumps({'type': 'connection', 'status': 'connected'})}\n\n"
+        
+        # Send all available tools
+        tools_data = []
+        for tool_name, tool_info in tools_registry.items():
+            # Extract parameter information
+            params = []
+            if 'parameters' in tool_info and tool_info['parameters']:
+                for param_name, param_type in tool_info['parameters'].items():
+                    params.append({
+                        "name": param_name,
+                        "type": str(param_type.__name__) if hasattr(param_type, '__name__') else str(param_type),
+                        "required": True  # You might want to make this configurable
+                    })
+            
+            tools_data.append({
+                "name": tool_name,
+                "description": tool_info["description"],
+                "parameters": params
+            })
+        
+        # Send tools in chunks to avoid overwhelming the client
+        chunk_size = 50
+        for i in range(0, len(tools_data), chunk_size):
+            chunk = tools_data[i:i + chunk_size]
+            tools_message = {
+                "type": "tools",
+                "tools": chunk,
+                "chunk": i // chunk_size + 1,
+                "total_chunks": (len(tools_data) + chunk_size - 1) // chunk_size,
+                "total_tools": len(tools_data)
+            }
+            yield f"data: {json.dumps(tools_message)}\n\n"
+            await asyncio.sleep(0.1)  # Small delay between chunks
+        
+        # Send completion message
+        yield f"data: {json.dumps({'type': 'tools_complete', 'total': len(tools_data)})}\n\n"
+        
+        # Keep connection alive with periodic pings
+        while True:
+            await asyncio.sleep(30)
+            yield f"data: {json.dumps({'type': 'ping', 'timestamp': datetime.now().isoformat()})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable Nginx buffering
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization"
+        }
+    )
+
+# =============================================================================
 # SERVER STARTUP
 # =============================================================================
 
@@ -1097,6 +1175,9 @@ if __name__ == "__main__":
     print(f"🔌 Port: {MCP_PORT}")
     print(f"🔧 Tools loaded: {len(tools_registry)}")
     print(f"🌐 Open WebUI URL: {OPENWEBUI_BASE_URL}")
+    print(f"📡 SSE Enabled: {ENABLE_SSE}")
+    if ENABLE_SSE:
+        print(f"🌊 SSE Path: {SSE_PATH}")
     print(f"✅ Server ready!")
     
     uvicorn.run(app, host=MCP_HOST, port=MCP_PORT)
