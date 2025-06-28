@@ -1,0 +1,96 @@
+version: '3.8'
+
+networks:
+  ai-hub-net:
+    driver: bridge
+
+services:
+  # Open WebUI with Supabase PostgreSQL
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    environment:
+      # Use Supabase PostgreSQL - REPLACE WITH YOUR ACTUAL CONNECTION STRING
+      - DATABASE_URL=${SUPABASE_DATABASE_URL}
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+      - ENV=dev
+      - ENABLE_API_KEY=true
+      - DATA_DIR=/app/backend/data
+      # Use DigitalOcean Redis
+      - REDIS_URL=${DO_REDIS_URL}
+    volumes:
+      - /data/openwebui:/app/backend/data
+      - /data/workspace:/app/workspace  # AI can access workspace
+    networks:
+      - ai-hub-net
+    restart: unless-stopped
+
+  # MCP Server with File System Access
+  mcp-server:
+    build: ./mcp-server
+    container_name: mcp-server
+    environment:
+      - OPENWEBUI_URL=http://open-webui:8080
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY}
+      - WORKSPACE_PATH=/app/workspace
+      - REDIS_URL=${DO_REDIS_URL}
+      - MCPO_PORT=8888
+      - MCPO_HOST=0.0.0.0
+    volumes:
+      - /data/workspace:/app/workspace  # Read/write AI code
+    networks:
+      - ai-hub-net
+    restart: unless-stopped
+
+  # FileBrowser - Visual File Management
+  filebrowser:
+    image: filebrowser/filebrowser:latest
+    container_name: filebrowser
+    environment:
+      - FB_DATABASE=/database/filebrowser.db
+      - FB_ROOT=/srv
+      - FB_LOG=stdout
+      - FB_NOAUTH=false  # Enable authentication
+    volumes:
+      - /data/workspace:/srv  # Browse AI code
+      - /data/filebrowser:/database
+    networks:
+      - ai-hub-net
+    restart: unless-stopped
+
+  # Code Server - VS Code in Browser
+  code-server:
+    image: lscr.io/linuxserver/code-server:latest
+    container_name: code-server
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+      - DEFAULT_WORKSPACE=/config/workspace
+      - PASSWORD=${CODE_SERVER_PASSWORD}
+    volumes:
+      - /data/workspace:/config/workspace
+      - /data/code-server:/config
+    networks:
+      - ai-hub-net
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/production.conf:/etc/nginx/conf.d/default.conf:ro
+      - /data/nginx/ssl:/etc/nginx/ssl:ro
+      - /data/workspace:/var/www/workspace:ro  # Direct file access
+    networks:
+      - ai-hub-net
+    depends_on:
+      - open-webui
+      - mcp-server
+      - filebrowser
+      - code-server
+    restart: unless-stopped
