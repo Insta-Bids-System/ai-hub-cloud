@@ -1,7 +1,7 @@
 FROM filebrowser/filebrowser:latest
 
 # Set up the file browser with default configuration
-COPY --chown=root:root filebrowser.json /.filebrowser.json
+COPY --chown=root:root filebrowser/filebrowser.json /.filebrowser.json
 
 # Create directory for files
 RUN mkdir -p /srv
