@@ -8,10 +8,12 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+# Fix: Use correct path for requirements.txt
+COPY mcp-server/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py .
+# Fix: Use correct path for main.py
+COPY mcp-server/main.py .
 
 EXPOSE 8888
 
